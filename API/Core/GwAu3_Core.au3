@@ -544,6 +544,8 @@ EndFunc
 #EndRegion Initialization
 
 Func Core_Enqueue_($a_p_Ptr, $a_i_Size)
+    ; Dropped while the map loads - see Core_Enqueue
+    If Map_GetInstanceInfo('IsLoading') Then Return
     ; Slot read once, counter set from it - see Core_Enqueue
     Local $l_i_Index = $g_i_QueueCounter
     Local $l_i_Slot = $g_p_QueueBase + (256 * $l_i_Index)
@@ -562,6 +564,8 @@ EndFunc
 Func Core_Enqueue($a_p_Ptr, $a_i_Size)
 	; DIAGNOSTIC (007 on map change): TEMPORARY
 	Core_DiagEnqueue($a_p_Ptr, $a_i_Size)
+	; A command run while the map loads acts on the new instance with IDs from the old one: the server disconnects (007)
+	If Map_GetInstanceInfo('IsLoading') Then Return
 	Local $l_i_Index = $g_i_QueueCounter
 	DllCall($g_h_Kernel32, 'int', 'WriteProcessMemory', 'int', $g_h_GWProcess, 'int', 256 * $l_i_Index + $g_p_QueueBase, 'ptr', $a_p_Ptr, 'int', $a_i_Size, 'int', '')
 	$g_i_QueueCounter = ($l_i_Index = $g_i_QueueSize) ? 0 : $l_i_Index + 1

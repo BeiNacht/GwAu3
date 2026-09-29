@@ -49,6 +49,8 @@ EndFunc   ;==>Chat_SendWhisper
 ;~ '!' = All, '@' = Guild, '#' = Team, '$' = Trade, '%' = Alliance, '"' = Whisper
 Func Chat_SendChat($a_s_Message, $a_s_Channel = '!')
     Local $l_s_Message
+    ; Dropped while the map loads - see Core_Enqueue
+    If Map_GetInstanceInfo('IsLoading') Then Return
     ; Slot read once, counter set from it - see Core_Enqueue
     Local $l_i_Index = $g_i_QueueCounter
     Local $l_p_Address = 256 * $l_i_Index + $g_p_QueueBase

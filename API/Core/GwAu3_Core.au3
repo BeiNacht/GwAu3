@@ -560,10 +560,81 @@ EndFunc
 ; slot once and setting the counter from it means an interleaved enqueue reuses the slot instead - at worst one of the
 ; two commands is overwritten or runs late, the queue never stalls.
 Func Core_Enqueue($a_p_Ptr, $a_i_Size)
+	; DIAGNOSTIC (007 on map change): TEMPORARY
+	Core_DiagEnqueue($a_p_Ptr, $a_i_Size)
 	Local $l_i_Index = $g_i_QueueCounter
 	DllCall($g_h_Kernel32, 'int', 'WriteProcessMemory', 'int', $g_h_GWProcess, 'int', 256 * $l_i_Index + $g_p_QueueBase, 'ptr', $a_p_Ptr, 'int', $a_i_Size, 'int', '')
 	$g_i_QueueCounter = ($l_i_Index = $g_i_QueueSize) ? 0 : $l_i_Index + 1
 EndFunc
+
+#Region DIAGNOSTIC (007 on map change) - TEMPORARY, remove once the cause is known
+; Every command queued to the game is logged with the game state at that moment, to one file per script instance in
+; @ScriptDir\logs. The state is also logged each time it changes, from Core_DiagState (called by the host every second),
+; so a load shows up even when no command is sent. The last lines before a 007 show what was sent while loading.
+Global $g_h_DiagEnqueueFile = -1
+Global $g_s_DiagLastState = ''
+
+Func Core_DiagWrite($a_s_Line)
+	If $g_h_DiagEnqueueFile = -1 Then
+		Local $l_s_Path = @ScriptDir & '\logs\gwau3-commands-' & @YEAR & @MON & @MDAY & '-' & @HOUR & @MIN & @SEC & '-' & @AutoItPID & '.log'
+		$g_h_DiagEnqueueFile = FileOpen($l_s_Path, 1 + 8)
+		If $g_h_DiagEnqueueFile = -1 Then Return
+		FileWriteLine($g_h_DiagEnqueueFile, 'started: ' & $CmdLineRaw)
+	EndIf
+	FileWriteLine($g_h_DiagEnqueueFile, @HOUR & ':' & @MIN & ':' & @SEC & '.' & @MSEC & ' ' & $a_s_Line)
+	FileFlush($g_h_DiagEnqueueFile)
+EndFunc
+
+; type 0 outpost / 1 explorable / 2 loading, worldMyID is the one Skill_UseSkill sends as caster,
+; agentMyID the one -2 resolves to, loaded is the injected load-finished flag
+Func Core_DiagStateString()
+	Return 'type=' & Map_GetInstanceInfo('Type') & ' map=' & Map_GetMapID() & ' worldMyID=' & World_GetWorldInfo('MyID') _
+		& ' agentMyID=' & Agent_GetMyID() & ' uptime=' & Map_GetInstanceUpTime() & ' ping=' & Other_GetPing() _
+		& ' loaded=' & Memory_Read($g_p_MapIsLoaded)
+EndFunc
+
+Func Core_DiagState()
+	Local $l_s_State = 'type=' & Map_GetInstanceInfo('Type') & ' map=' & Map_GetMapID() & ' worldMyID=' & World_GetWorldInfo('MyID') & ' agentMyID=' & Agent_GetMyID()
+	If $l_s_State == $g_s_DiagLastState Then Return
+	$g_s_DiagLastState = $l_s_State
+	Core_DiagWrite('STATE ' & Core_DiagStateString())
+EndFunc
+
+Func Core_DiagEnqueue($a_p_Ptr, $a_i_Size)
+	Local $l_s_Name = 'other'
+	Select
+		Case $a_p_Ptr = $g_p_UseSkill
+			$l_s_Name = 'UseSkill'
+		Case $a_p_Ptr = $g_p_UseHeroSkill
+			$l_s_Name = 'UseHeroSkill'
+		Case $a_p_Ptr = $g_p_Move
+			$l_s_Name = 'Move'
+		Case $a_p_Ptr = $g_p_Packet
+			$l_s_Name = 'Packet'
+		Case $a_p_Ptr = $g_p_Action
+			$l_s_Name = 'Action'
+		Case $a_p_Ptr = $g_p_Interact
+			$l_s_Name = 'Interact'
+		Case $a_p_Ptr = $g_p_ChangeTarget
+			$l_s_Name = 'ChangeTarget'
+		Case $a_p_Ptr = $g_p_MoveMap
+			$l_s_Name = 'MoveMap'
+		Case $a_p_Ptr = $g_p_Dialog
+			$l_s_Name = 'Dialog'
+		Case $a_p_Ptr = $g_p_MakeAgentArray
+			$l_s_Name = 'MakeAgentArray'
+	EndSelect
+	; Parameters after the command address, at most 5, in hex - a packet reads size, header, then its own parameters
+	Local $l_i_Count = Int($a_i_Size / 4)
+	If $l_i_Count > 6 Then $l_i_Count = 6
+	Local $l_d_Struct = DllStructCreate('dword[' & $l_i_Count & ']', $a_p_Ptr)
+	Local $l_s_Params = ''
+	For $l_i_I = 2 To $l_i_Count
+		$l_s_Params &= ' ' & Hex(DllStructGetData($l_d_Struct, 1, $l_i_I), 8)
+	Next
+	Core_DiagWrite('CMD ' & $l_s_Name & ' [' & StringStripWS($l_s_Params, 1) & '] ' & Core_DiagStateString())
+EndFunc
+#EndRegion DIAGNOSTIC
 
 Func Core_PerformAction($a_i_Action, $a_i_Flag, $a_i_Type = 0)
 	DllStructSetData($g_d_Action, 2, $a_i_Action)

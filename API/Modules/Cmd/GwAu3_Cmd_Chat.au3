@@ -62,6 +62,8 @@ Func Chat_SendChat($a_s_Message, $a_s_Channel = '!')
     EndIf
 
     Memory_Write($l_p_Address + 12, $a_s_Channel & $l_s_Message, 'wchar[122]')
+    ; DIAGNOSTIC (007 on map change): TEMPORARY
+    Core_DiagWrite('CMD SendChat [' & $a_s_Channel & $l_s_Message & '] ' & Core_DiagStateString())
     DllCall($g_h_Kernel32, 'int', 'WriteProcessMemory', 'int', $g_h_GWProcess, 'int', $l_p_Address, 'ptr', $g_p_SendChat, 'int', 8, 'int', '')
 
     If StringLen($a_s_Message) > 120 Then Chat_SendChat(StringTrimLeft($a_s_Message, 120), $a_s_Channel)
